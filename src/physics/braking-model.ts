@@ -61,39 +61,43 @@ export class BrakingModel {
     const stepSize = Math.max(1, targetDistance / 500);
     const curve: BrakingCurve = [];
 
-    let d = targetDistance;
+    // distance = "distance to target" (remaining distance)
+    // At the target: distance=0, speed=targetSpeed
+    // Moving away from target: distance increases, speed increases
+    let dtt = 0;
     let v = targetSpeed;
 
-    // Integrate backward from target
-    curve.push({ distance: d, speed: v });
+    curve.push({ distance: 0, speed: v });
 
-    while (d > 0) {
-      const grad = this.getGradientAt(gradientProfile, d);
+    while (dtt < targetDistance) {
+      // Gradient at the corresponding track position (targetDistance - dtt)
+      const grad = this.getGradientAt(gradientProfile, targetDistance - dtt);
       const aEff = this.effectiveDeceleration(deceleration, grad);
-      const step = Math.min(stepSize, d);
+      const step = Math.min(stepSize, targetDistance - dtt);
 
       // v^2 = v0^2 + 2*a*ds
       const vSquared = v * v + 2 * aEff * step;
       if (vSquared < 0) break;
       v = Math.sqrt(vSquared);
 
-      d -= step;
-      curve.unshift({ distance: Math.max(0, d), speed: v });
+      dtt += step;
+      curve.push({ distance: dtt, speed: v });
 
       // Cap at very high speeds to prevent runaway
       if (v > 120) break;
     }
 
-    // Add reaction time offset: shift all distances backward
-    if (reactionTime > 0 && curve.length > 0) {
-      const topSpeed = curve[0].speed;
+    // Apply reaction time offset: shift curves toward target (lower distances)
+    // to account for distance covered during driver/system reaction time
+    if (reactionTime > 0 && curve.length > 1) {
+      const topSpeed = curve[curve.length - 1].speed;
       const reactionDist = topSpeed * reactionTime;
       for (const pt of curve) {
         pt.distance = Math.max(0, pt.distance - reactionDist);
       }
-      // Prepend constant speed segment during reaction
-      if (curve[0].distance > 0) {
-        curve.unshift({ distance: 0, speed: topSpeed });
+      // Remove leading duplicate distance=0 points
+      while (curve.length > 1 && curve[0].distance === 0 && curve[1].distance === 0) {
+        curve.shift();
       }
     }
 

@@ -134,39 +134,53 @@ export class TopologyBuilder {
   }
 
   private mergeColocatedNodes(nodeMap: Map<string, TopoNode>, edges: TopoEdge[]): void {
-    const nodes = Array.from(nodeMap.values());
     const mergeThreshold = 5.0;
-    const mergeMap = new Map<string, string>();
+    // Resolve the canonical id for a node, following merge chains
+    const canonical = new Map<string, string>();
 
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const dist = distance(nodes[i].position, nodes[j].position);
+    const resolve = (id: string): string => {
+      let cur = id;
+      while (canonical.has(cur)) {
+        cur = canonical.get(cur)!;
+      }
+      return cur;
+    };
+
+    // Build a list of merge pairs first, then apply
+    const nodeIds = Array.from(nodeMap.keys());
+    for (let i = 0; i < nodeIds.length; i++) {
+      const aId = resolve(nodeIds[i]);
+      const a = nodeMap.get(aId);
+      if (!a) continue;
+
+      for (let j = i + 1; j < nodeIds.length; j++) {
+        const bId = resolve(nodeIds[j]);
+        if (aId === bId) continue; // already merged
+        const b = nodeMap.get(bId);
+        if (!b) continue;
+
+        const dist = distance(a.position, b.position);
         if (dist < mergeThreshold) {
-          const keepId = nodes[i].id;
-          const removeId = nodes[j].id;
-          mergeMap.set(removeId, keepId);
+          // Merge b into a
+          canonical.set(bId, aId);
 
-          // Merge connected edges
-          const keepNode = nodeMap.get(keepId)!;
-          const removeNode = nodeMap.get(removeId)!;
-          for (const edgeId of removeNode.connectedEdges) {
-            if (!keepNode.connectedEdges.includes(edgeId)) {
-              keepNode.connectedEdges.push(edgeId);
+          for (const edgeId of b.connectedEdges) {
+            if (!a.connectedEdges.includes(edgeId)) {
+              a.connectedEdges.push(edgeId);
             }
           }
 
-          // Mark as switch if connecting multiple tracks
-          if (keepNode.connectedEdges.length > 2) {
-            keepNode.type = 'switch';
+          if (a.connectedEdges.length > 2) {
+            a.type = 'switch';
           }
 
-          // Update edges referencing removed node
+          // Update edges referencing merged node
           for (const edge of edges) {
-            if (edge.startNodeId === removeId) edge.startNodeId = keepId;
-            if (edge.endNodeId === removeId) edge.endNodeId = keepId;
+            if (edge.startNodeId === bId) edge.startNodeId = aId;
+            if (edge.endNodeId === bId) edge.endNodeId = aId;
           }
 
-          nodeMap.delete(removeId);
+          nodeMap.delete(bId);
         }
       }
     }
