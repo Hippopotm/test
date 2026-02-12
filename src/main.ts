@@ -9,6 +9,7 @@ import { BrakingOverlay } from './renderer/braking-overlay';
 import { AnimationController } from './animation/animation-controller';
 import { TrainParameters, DEFAULT_TRAIN_PARAMS, TRAIN_PRESETS } from './types/train';
 import { msToKmh } from './utils/math';
+import { DEMO_RAILML } from './data/demo-layout';
 
 class Application {
   private renderer!: CanvasRenderer;
@@ -323,14 +324,8 @@ class Application {
     });
   }
 
-  private async loadDemo(): Promise<void> {
-    try {
-      const response = await fetch('/samples/demo-layout.railml');
-      const xml = await response.text();
-      this.loadRailML(xml);
-    } catch (err) {
-      console.error('Failed to load demo:', err);
-    }
+  private loadDemo(): void {
+    this.loadRailML(DEMO_RAILML);
   }
 
   private openFileDialog(): void {
@@ -382,8 +377,9 @@ class Application {
 
       console.log(`Loaded: ${infra.tracks.length} tracks, ${infra.signals.length} signals, ${infra.switches.length} switches`);
     } catch (err) {
-      console.error('Failed to parse railML:', err);
-      alert('Failed to parse railML file. Check console for details.');
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('Failed to parse railML:', msg, err);
+      alert('Failed to parse railML file: ' + msg);
     }
   }
 

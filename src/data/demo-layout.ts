@@ -1,0 +1,169 @@
+export const DEMO_RAILML = `<?xml version="1.0" encoding="UTF-8"?>
+<railml version="2.2">
+  <infrastructure id="demo-layout">
+    <tracks>
+      <track id="T1" name="Western Approach">
+        <trackTopology>
+          <trackBegin pos="0">
+            <bufferStop id="BS1"/>
+            <geoCoord coord="0.0 200.0"/>
+          </trackBegin>
+          <trackEnd pos="1500">
+            <connection id="conn_T1_end" ref="SW1"/>
+            <geoCoord coord="1500.0 200.0"/>
+          </trackEnd>
+        </trackTopology>
+        <trackElements>
+          <speedChanges>
+            <speedChange id="sc1" pos="0" vMax="33.3" dir="both"/>
+          </speedChanges>
+          <gradientChanges>
+            <gradientChange id="gc1" pos="0" slope="0"/>
+            <gradientChange id="gc2" pos="500" slope="10"/>
+            <gradientChange id="gc3" pos="1000" slope="-5"/>
+          </gradientChanges>
+          <signals>
+            <signal id="S1" pos="50" type="main" dir="up"/>
+            <signal id="S2" pos="600" type="distant" dir="up"/>
+            <signal id="S3" pos="1350" type="main" dir="up"/>
+            <signal id="S10" pos="1400" type="main" dir="down"/>
+            <signal id="S11" pos="800" type="distant" dir="down"/>
+          </signals>
+        </trackElements>
+      </track>
+
+      <track id="T2" name="Main Through Line">
+        <trackTopology>
+          <trackBegin pos="0">
+            <connection id="conn_T2_begin" ref="SW1"/>
+            <geoCoord coord="1500.0 200.0"/>
+          </trackBegin>
+          <trackEnd pos="2200">
+            <connection id="conn_T2_end" ref="SW3"/>
+            <geoCoord coord="3700.0 200.0"/>
+          </trackEnd>
+        </trackTopology>
+        <trackElements>
+          <speedChanges>
+            <speedChange id="sc2" pos="0" vMax="33.3" dir="both"/>
+          </speedChanges>
+          <gradientChanges>
+            <gradientChange id="gc4" pos="0" slope="-5"/>
+            <gradientChange id="gc5" pos="700" slope="0"/>
+            <gradientChange id="gc6" pos="1500" slope="5"/>
+          </gradientChanges>
+          <signals>
+            <signal id="S4" pos="200" type="main" dir="up"/>
+            <signal id="S5" pos="2000" type="main" dir="down"/>
+          </signals>
+        </trackElements>
+      </track>
+
+      <track id="T3" name="Passing Loop">
+        <trackTopology>
+          <trackBegin pos="0">
+            <connection id="conn_T3_begin" ref="SW2"/>
+            <geoCoord coord="1600.0 280.0"/>
+          </trackBegin>
+          <trackEnd pos="2000">
+            <connection id="conn_T3_end" ref="SW4"/>
+            <geoCoord coord="3600.0 280.0"/>
+          </trackEnd>
+        </trackTopology>
+        <trackElements>
+          <speedChanges>
+            <speedChange id="sc3" pos="0" vMax="16.7" dir="both"/>
+          </speedChanges>
+          <gradientChanges>
+            <gradientChange id="gc7" pos="0" slope="0"/>
+          </gradientChanges>
+          <signals>
+            <signal id="S6" pos="100" type="main" dir="up"/>
+            <signal id="S7" pos="1900" type="main" dir="down"/>
+          </signals>
+        </trackElements>
+      </track>
+
+      <track id="T4" name="Eastern Approach">
+        <trackTopology>
+          <trackBegin pos="0">
+            <connection id="conn_T4_begin" ref="SW3"/>
+            <geoCoord coord="3700.0 200.0"/>
+          </trackBegin>
+          <trackEnd pos="1500">
+            <bufferStop id="BS2"/>
+            <geoCoord coord="5200.0 200.0"/>
+          </trackEnd>
+        </trackTopology>
+        <trackElements>
+          <speedChanges>
+            <speedChange id="sc4" pos="0" vMax="33.3" dir="both"/>
+          </speedChanges>
+          <gradientChanges>
+            <gradientChange id="gc8" pos="0" slope="5"/>
+            <gradientChange id="gc9" pos="500" slope="0"/>
+          </gradientChanges>
+          <signals>
+            <signal id="S8" pos="100" type="main" dir="up"/>
+            <signal id="S9" pos="1350" type="main" dir="down"/>
+            <signal id="S12" pos="900" type="distant" dir="down"/>
+            <signal id="S13" pos="1450" type="main" dir="up"/>
+          </signals>
+        </trackElements>
+      </track>
+
+      <track id="T5" name="West Junction Link">
+        <trackTopology>
+          <trackBegin pos="0">
+            <connection id="conn_T5_begin" ref="SW1"/>
+            <geoCoord coord="1500.0 200.0"/>
+          </trackBegin>
+          <trackEnd pos="150">
+            <connection id="conn_T5_end" ref="SW2"/>
+            <geoCoord coord="1600.0 280.0"/>
+          </trackEnd>
+        </trackTopology>
+        <trackElements>
+          <speedChanges>
+            <speedChange id="sc5" pos="0" vMax="16.7" dir="both"/>
+          </speedChanges>
+          <gradientChanges>
+            <gradientChange id="gc10" pos="0" slope="0"/>
+          </gradientChanges>
+        </trackElements>
+      </track>
+
+      <track id="T6" name="East Junction Link">
+        <trackTopology>
+          <trackBegin pos="0">
+            <connection id="conn_T6_begin" ref="SW4"/>
+            <geoCoord coord="3600.0 280.0"/>
+          </trackBegin>
+          <trackEnd pos="150">
+            <connection id="conn_T6_end" ref="SW3"/>
+            <geoCoord coord="3700.0 200.0"/>
+          </trackEnd>
+        </trackTopology>
+        <trackElements>
+          <speedChanges>
+            <speedChange id="sc6" pos="0" vMax="16.7" dir="both"/>
+          </speedChanges>
+          <gradientChanges>
+            <gradientChange id="gc11" pos="0" slope="0"/>
+          </gradientChanges>
+        </trackElements>
+      </track>
+    </tracks>
+
+    <operationControlPoints>
+      <ocp id="STA_W" name="Westfield">
+        <propOperational operationalType="station"/>
+        <geoCoord coord="200.0 200.0"/>
+      </ocp>
+      <ocp id="STA_E" name="Eastbourne">
+        <propOperational operationalType="station"/>
+        <geoCoord coord="5000.0 200.0"/>
+      </ocp>
+    </operationControlPoints>
+  </infrastructure>
+</railml>`;
