@@ -2,6 +2,7 @@ import { TrainState, TrainParameters } from '../types/train';
 import { RouteSegment, GradientPoint, Vec2 } from '../types/topology';
 import { BrakingCurveSet } from '../types/braking';
 import { TrackNetwork } from '../model/track-network';
+import { StationStop } from '../model/track-network';
 import { BrakingModel } from './braking-model';
 import { clamp } from '../utils/math';
 import { pointAlongPolyline, polylineLength } from '../utils/math';
@@ -10,11 +11,16 @@ export class TrainDynamics {
   private state: TrainState;
   private params: TrainParameters;
   private route: RouteSegment[] = [];
+  private routeEdgeIds: string[] = [];
   private network: TrackNetwork;
   private brakingModel: BrakingModel;
   private _lastCurves: BrakingCurveSet | null = null;
   private _finished = false;
   private routeTotalLength = 0;
+
+  // Station stopping
+  private stationStops: StationStop[] = [];
+  private dwellTime = 20; // seconds dwell at each station
 
   constructor(params: TrainParameters, network: TrackNetwork, brakingModel: BrakingModel) {
     this.params = params;
@@ -34,22 +40,39 @@ export class TrainDynamics {
       totalDistance: 0,
       distanceToTarget: 0,
       supervisionStatus: 'normal',
+      dwellRemaining: 0,
+      currentStopIndex: 0,
+      nextStationName: '',
     };
   }
 
   setRoute(route: RouteSegment[]): void {
     this.route = route;
+    this.routeEdgeIds = route.map(r => r.edgeId);
     this.routeTotalLength = 0;
     for (const seg of route) {
       this.routeTotalLength += Math.abs(seg.endOffset - seg.startOffset);
     }
+    this.stationStops = this.network.getStationStopsAlongRoute(route);
     this.reset();
+  }
+
+  setDwellTime(seconds: number): void {
+    this.dwellTime = seconds;
   }
 
   reset(): void {
     this.state = this.createInitialState();
+    if (this.stationStops.length > 0) {
+      this.state.nextStationName = this.stationStops[0].name;
+    }
     this._lastCurves = null;
     this._finished = false;
+    // Reset signals
+    if (this.route.length > 0) {
+      const dir = this.route[0].direction;
+      this.network.updateSignalAspects(this.route[0].edgeId, this.routeEdgeIds, dir);
+    }
   }
 
   updateParams(params: TrainParameters): void {
@@ -60,8 +83,32 @@ export class TrainDynamics {
   update(dt: number): void {
     if (this._finished || this.route.length === 0) return;
 
+    // Handle dwell at station
+    if (this.state.dwellRemaining > 0) {
+      this.state.dwellRemaining -= dt;
+      this.state.speed = 0;
+      this.state.acceleration = 0;
+      this.state.brakeMode = 'none';
+      this.state.throttle = 0;
+      if (this.state.dwellRemaining <= 0) {
+        this.state.dwellRemaining = 0;
+        this.state.currentStopIndex++;
+        if (this.state.currentStopIndex >= this.stationStops.length) {
+          this._finished = true;
+          return;
+        }
+        this.state.nextStationName = this.stationStops[this.state.currentStopIndex].name;
+      }
+      return;
+    }
+
     // Compute control (braking/throttle decisions)
     this.computeControl();
+
+    // Check if we've arrived at the next station
+    if (this.checkStationArrival()) {
+      return;
+    }
 
     // Integrate motion (semi-implicit Euler)
     this.state.speed += this.state.acceleration * dt;
@@ -72,6 +119,47 @@ export class TrainDynamics {
 
     // Advance along route
     this.advanceAlongRoute(displacement);
+
+    // Update signal aspects based on current position
+    this.updateSignals();
+  }
+
+  private checkStationArrival(): boolean {
+    if (this.stationStops.length === 0) return false;
+    if (this.state.currentStopIndex >= this.stationStops.length) return false;
+
+    const nextStop = this.stationStops[this.state.currentStopIndex];
+    const distToStop = nextStop.distanceAlongRoute - this.state.totalDistance;
+
+    // Arrived: close enough and nearly stopped
+    if (distToStop < 2.0 && this.state.speed < 0.3) {
+      this.state.speed = 0;
+      this.state.acceleration = 0;
+      this.state.totalDistance = nextStop.distanceAlongRoute;
+      this.state.brakeMode = 'none';
+      this.state.distanceToTarget = 0;
+
+      if (this.dwellTime > 0) {
+        this.state.dwellRemaining = this.dwellTime;
+      } else {
+        // No dwell: advance to next stop immediately
+        this.state.currentStopIndex++;
+        if (this.state.currentStopIndex >= this.stationStops.length) {
+          this._finished = true;
+        } else {
+          this.state.nextStationName = this.stationStops[this.state.currentStopIndex].name;
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+
+  private updateSignals(): void {
+    if (this.route.length === 0) return;
+    const segIndex = Math.min(this.state.routeEdgeIndex, this.route.length - 1);
+    const seg = this.route[segIndex];
+    this.network.updateSignalAspects(seg.edgeId, this.routeEdgeIds, seg.direction);
   }
 
   private computeControl(): void {
@@ -83,19 +171,26 @@ export class TrainDynamics {
       return;
     }
 
-    // Calculate remaining distance on the route
-    let remainingDist = 0;
-    const isForward = currentSeg.direction === 'forward';
-    remainingDist += isForward
-      ? currentSeg.endOffset - this.state.edgeOffset
-      : this.state.edgeOffset - currentSeg.endOffset;
+    // Calculate distance to target (next station or route end)
+    let targetDistance: number;
 
-    for (let i = this.state.routeEdgeIndex + 1; i < this.route.length; i++) {
-      remainingDist += Math.abs(this.route[i].endOffset - this.route[i].startOffset);
+    if (this.stationStops.length > 0 && this.state.currentStopIndex < this.stationStops.length) {
+      const nextStop = this.stationStops[this.state.currentStopIndex];
+      targetDistance = Math.max(0, nextStop.distanceAlongRoute - this.state.totalDistance);
+    } else {
+      // Fallback: target end of route
+      let remainingDist = 0;
+      const isForward = currentSeg.direction === 'forward';
+      remainingDist += isForward
+        ? currentSeg.endOffset - this.state.edgeOffset
+        : this.state.edgeOffset - currentSeg.endOffset;
+
+      for (let i = this.state.routeEdgeIndex + 1; i < this.route.length; i++) {
+        remainingDist += Math.abs(this.route[i].endOffset - this.route[i].startOffset);
+      }
+      targetDistance = Math.max(0, remainingDist);
     }
 
-    // The target is the end of the route (stop)
-    const targetDistance = Math.max(0, remainingDist);
     const targetSpeed = 0;
 
     this.state.distanceToTarget = targetDistance;
@@ -237,5 +332,15 @@ export class TrainDynamics {
 
   getRouteTotalLength(): number {
     return this.routeTotalLength;
+  }
+
+  getOccupiedEdgeId(): string | null {
+    if (this.route.length === 0) return null;
+    const segIndex = Math.min(this.state.routeEdgeIndex, this.route.length - 1);
+    return this.route[segIndex].edgeId;
+  }
+
+  getStationStops(): StationStop[] {
+    return this.stationStops;
   }
 }

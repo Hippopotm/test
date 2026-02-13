@@ -34,6 +34,8 @@ class Application {
   private canvasHint!: HTMLElement;
   private routeSelect!: HTMLSelectElement;
   private routeDescription!: HTMLElement;
+  private nextStationValue!: HTMLElement;
+  private dwellValue!: HTMLElement;
 
   constructor() {
     this.trainParams = { ...DEFAULT_TRAIN_PARAMS };
@@ -169,6 +171,14 @@ class Application {
           <span class="info-item__value" id="info-dist-target">— m</span>
         </div>
         <div class="info-item info-item--full">
+          <span class="info-item__label">Next Station</span>
+          <span class="info-item__value" id="info-next-station">—</span>
+        </div>
+        <div class="info-item">
+          <span class="info-item__label">Dwell</span>
+          <span class="info-item__value" id="info-dwell">—</span>
+        </div>
+        <div class="info-item info-item--full">
           <span class="info-item__label">Brake Mode</span>
           <span class="info-item__value" id="info-brake">None</span>
         </div>
@@ -184,6 +194,8 @@ class Application {
     this.posValue = infoPanel.querySelector('#info-pos')!;
     this.gradientValue = infoPanel.querySelector('#info-gradient')!;
     this.distTargetValue = infoPanel.querySelector('#info-dist-target')!;
+    this.nextStationValue = infoPanel.querySelector('#info-next-station')!;
+    this.dwellValue = infoPanel.querySelector('#info-dwell')!;
     this.brakeValue = infoPanel.querySelector('#info-brake')!;
     this.supervisionValue = infoPanel.querySelector('#info-supervision')!;
 
@@ -511,6 +523,18 @@ class Application {
     // Progress
     const progress = routeLen > 0 ? (state.totalDistance / routeLen) * 100 : 0;
     this.progressFill.style.width = `${Math.min(100, progress)}%`;
+
+    // Next station
+    this.nextStationValue.textContent = state.nextStationName || '—';
+
+    // Dwell
+    if (state.dwellRemaining > 0) {
+      this.dwellValue.textContent = `${state.dwellRemaining.toFixed(1)}s`;
+      this.dwellValue.style.color = '#38bdf8';
+    } else {
+      this.dwellValue.textContent = '—';
+      this.dwellValue.style.color = '';
+    }
 
     // Update play button if finished
     if (this.trainDynamics.isFinished()) {

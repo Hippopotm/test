@@ -8,6 +8,9 @@ export interface TrainState {
   totalDistance: number;
   distanceToTarget: number;
   supervisionStatus: 'normal' | 'indication' | 'permitted' | 'warning' | 'intervention';
+  dwellRemaining: number;
+  currentStopIndex: number;
+  nextStationName: string;
 }
 
 export interface TrainParameters {

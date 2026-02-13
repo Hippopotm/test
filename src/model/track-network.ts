@@ -7,6 +7,12 @@ export interface StationInfo {
   position: Vec2;
 }
 
+export interface StationStop {
+  stationId: string;
+  name: string;
+  distanceAlongRoute: number;
+}
+
 export class TrackNetwork {
   readonly nodes: Map<string, TopoNode>;
   readonly edges: Map<string, TopoEdge>;
@@ -202,6 +208,90 @@ export class TrackNetwork {
     }
 
     return [];
+  }
+
+  getStationStopsAlongRoute(route: RouteSegment[]): StationStop[] {
+    if (route.length === 0) return [];
+
+    // Build reverse map: nodeId → station
+    const nodeToStation = new Map<string, StationInfo>();
+    for (const station of this.stations) {
+      const nodeId = this.stationNodeMap.get(station.id);
+      if (nodeId) nodeToStation.set(nodeId, station);
+    }
+
+    const stops: StationStop[] = [];
+    let cumulativeDistance = 0;
+
+    for (let i = 0; i < route.length; i++) {
+      const seg = route[i];
+      const segLength = Math.abs(seg.endOffset - seg.startOffset);
+      const edge = this.edges.get(seg.edgeId);
+
+      // Check station at start of first segment only (origin — skip it, train starts there)
+      if (i === 0 && edge) {
+        // Don't add the origin station as a stop
+      }
+
+      // At end of each segment, check if there's a station
+      if (edge) {
+        const endNodeId = seg.direction === 'forward' ? edge.endNodeId : edge.startNodeId;
+        const station = nodeToStation.get(endNodeId);
+        if (station) {
+          cumulativeDistance += segLength;
+          stops.push({
+            stationId: station.id,
+            name: station.name,
+            distanceAlongRoute: cumulativeDistance,
+          });
+        } else {
+          cumulativeDistance += segLength;
+        }
+      } else {
+        cumulativeDistance += segLength;
+      }
+    }
+
+    return stops;
+  }
+
+  updateSignalAspects(occupiedEdgeId: string | null, routeEdgeIds: string[], direction: 'forward' | 'reverse'): void {
+    // Reset all signals to clear
+    for (const edge of this.edges.values()) {
+      for (const signal of edge.signals) {
+        signal.aspect = 'clear';
+      }
+    }
+
+    if (!occupiedEdgeId) return;
+
+    const occupiedIndex = routeEdgeIds.indexOf(occupiedEdgeId);
+    if (occupiedIndex === -1) return;
+
+    const signalDir = direction;
+
+    // Occupied edge: signals facing train direction → stop (RED)
+    const occEdge = this.edges.get(occupiedEdgeId);
+    if (occEdge) {
+      for (const signal of occEdge.signals) {
+        if (signal.direction === signalDir) {
+          signal.aspect = 'stop';
+        }
+      }
+    }
+
+    // Previous edge: signals facing train direction → caution (YELLOW)
+    if (occupiedIndex > 0) {
+      const prevEdgeId = routeEdgeIds[occupiedIndex - 1];
+      const prevEdge = this.edges.get(prevEdgeId);
+      if (prevEdge) {
+        for (const signal of prevEdge.signals) {
+          if (signal.direction === signalDir) {
+            signal.aspect = 'caution';
+          }
+        }
+      }
+    }
   }
 
   private buildSequentialRoute(): RouteSegment[] {

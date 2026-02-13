@@ -113,6 +113,75 @@ describe('End-to-end pipeline', () => {
     }
   });
 
+  it('computes station stops along a route', () => {
+    const parser = new RailMLParser();
+    const infra = parser.parse(DEMO_RAILML);
+    const builder = new TopologyBuilder();
+    const { nodes, edges } = builder.build(infra);
+    const network = new TrackNetwork(nodes, edges, infra.stations);
+
+    // Full line: 20 segments, 21 stations → 20 stops (origin excluded)
+    const fullRoute = network.generateDefaultRoute();
+    const stops = network.getStationStopsAlongRoute(fullRoute);
+    expect(stops.length).toBe(20);
+
+    // Distances should be increasing
+    for (let i = 1; i < stops.length; i++) {
+      expect(stops[i].distanceAlongRoute).toBeGreaterThan(stops[i - 1].distanceAlongRoute);
+    }
+
+    // Last stop should be near route total length
+    const totalLen = fullRoute.reduce(
+      (sum, seg) => sum + Math.abs(seg.endOffset - seg.startOffset), 0
+    );
+    expect(stops[stops.length - 1].distanceAlongRoute).toBeCloseTo(totalLen, 0);
+
+    // Partial route should have fewer stops
+    const partialRoute = network.generateRouteBetweenStations('STA_MAD', 'STA_BFM');
+    const partialStops = network.getStationStopsAlongRoute(partialRoute);
+    expect(partialStops.length).toBeGreaterThan(0);
+    expect(partialStops.length).toBeLessThan(stops.length);
+
+    console.log(`Station stops: ${stops.length} stops on full line, ${partialStops.length} on partial`);
+  });
+
+  it('updates signal aspects based on TVD occupancy', () => {
+    const parser = new RailMLParser();
+    const infra = parser.parse(DEMO_RAILML);
+    const builder = new TopologyBuilder();
+    const { nodes, edges } = builder.build(infra);
+    const network = new TrackNetwork(nodes, edges, infra.stations);
+
+    const route = network.generateDefaultRoute();
+    const routeEdgeIds = route.map(r => r.edgeId);
+
+    // No train: all signals should be clear
+    network.updateSignalAspects(null, routeEdgeIds, 'forward');
+    for (const edge of network.edges.values()) {
+      for (const signal of edge.signals) {
+        expect(signal.aspect).toBe('clear');
+      }
+    }
+
+    // Train on edge 5: edge 5 signals → stop, edge 4 signals → caution
+    network.updateSignalAspects(routeEdgeIds[5], routeEdgeIds, 'forward');
+    const edge5 = network.getEdge(routeEdgeIds[5])!;
+    const edge4 = network.getEdge(routeEdgeIds[4])!;
+    const edge3 = network.getEdge(routeEdgeIds[3])!;
+
+    for (const s of edge5.signals) {
+      if (s.direction === 'forward') expect(s.aspect).toBe('stop');
+    }
+    for (const s of edge4.signals) {
+      if (s.direction === 'forward') expect(s.aspect).toBe('caution');
+    }
+    for (const s of edge3.signals) {
+      if (s.direction === 'forward') expect(s.aspect).toBe('clear');
+    }
+
+    console.log('Signal aspects: TVD occupancy test passed');
+  });
+
   it('runs train dynamics simulation without errors', () => {
     const parser = new RailMLParser();
     const infra = parser.parse(DEMO_RAILML);
@@ -126,6 +195,7 @@ describe('End-to-end pipeline', () => {
 
     const route = network.generateDefaultRoute();
     dynamics.setRoute(route);
+    dynamics.setDwellTime(0); // skip dwell for test speed
 
     // Run 500 simulation steps
     for (let i = 0; i < 500; i++) {
@@ -183,7 +253,7 @@ describe('End-to-end pipeline', () => {
     console.log(`Braking curves: EBD ${curves.emergencyBrake.length} pts, SBD ${curves.serviceBrake.length} pts`);
   });
 
-  it('runs full simulation to completion', () => {
+  it('runs full simulation to completion with station stops', () => {
     const parser = new RailMLParser();
     const infra = parser.parse(DEMO_RAILML);
     const builder = new TopologyBuilder();
@@ -196,16 +266,25 @@ describe('End-to-end pipeline', () => {
 
     const route = network.generateDefaultRoute();
     dynamics.setRoute(route);
+    dynamics.setDwellTime(0); // skip dwell for test speed
 
     let steps = 0;
-    const maxSteps = 50000; // Longer route (~28.8km) needs more steps
+    const maxSteps = 100000;
     let maxSpeed = 0;
+    let stopsEncountered = 0;
+    let lastStopIndex = -1;
 
     while (!dynamics.isFinished() && steps < maxSteps) {
       dynamics.update(0.05);
       steps++;
       const state = dynamics.getState();
       if (state.speed > maxSpeed) maxSpeed = state.speed;
+
+      // Track station stops
+      if (state.currentStopIndex > lastStopIndex) {
+        stopsEncountered = state.currentStopIndex;
+        lastStopIndex = state.currentStopIndex;
+      }
 
       // Verify the curves are computed each frame
       const curves = dynamics.getCurves();
@@ -215,9 +294,13 @@ describe('End-to-end pipeline', () => {
     }
 
     const finalState = dynamics.getState();
-    console.log(`Full sim: ${steps} steps, max speed ${(maxSpeed * 3.6).toFixed(1)} km/h, total ${finalState.totalDistance.toFixed(0)}m, finished=${dynamics.isFinished()}`);
+    console.log(`Full sim: ${steps} steps, max speed ${(maxSpeed * 3.6).toFixed(1)} km/h, total ${finalState.totalDistance.toFixed(0)}m, stops=${stopsEncountered}, finished=${dynamics.isFinished()}`);
 
+    // Should have finished
+    expect(dynamics.isFinished()).toBe(true);
     // Should have moved some distance
     expect(finalState.totalDistance).toBeGreaterThan(1000);
+    // Should have encountered station stops
+    expect(stopsEncountered).toBeGreaterThan(0);
   });
 });
