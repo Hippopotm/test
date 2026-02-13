@@ -9,7 +9,7 @@ import { BrakingOverlay } from './renderer/braking-overlay';
 import { AnimationController } from './animation/animation-controller';
 import { TrainParameters, DEFAULT_TRAIN_PARAMS, TRAIN_PRESETS } from './types/train';
 import { msToKmh } from './utils/math';
-import { DEMO_RAILML } from './data/demo-layout';
+import { DEMO_RAILML, ROUTE_PRESETS, RoutePreset } from './data/demo-layout';
 
 class Application {
   private renderer!: CanvasRenderer;
@@ -32,6 +32,8 @@ class Application {
   private progressFill!: HTMLElement;
   private speedMultLabel!: HTMLElement;
   private canvasHint!: HTMLElement;
+  private routeSelect!: HTMLSelectElement;
+  private routeDescription!: HTMLElement;
 
   constructor() {
     this.trainParams = { ...DEFAULT_TRAIN_PARAMS };
@@ -103,6 +105,35 @@ class Application {
     const sidebar = document.createElement('div');
     sidebar.className = 'sidebar';
     app.appendChild(sidebar);
+
+    // Route selection panel
+    const routePanel = document.createElement('div');
+    routePanel.className = 'panel';
+    routePanel.innerHTML = `
+      <div class="panel__title">Route Service</div>
+      <div style="margin-bottom: 8px;">
+        <select id="route-select">
+          ${ROUTE_PRESETS.map((p, i) =>
+            `<option value="${i}"${i === 0 ? ' selected' : ''}>${p.name}</option>`
+          ).join('')}
+        </select>
+      </div>
+      <div id="route-description" style="font-size: 11px; color: var(--text-secondary, #94a3b8); line-height: 1.4;">
+        ${ROUTE_PRESETS[0].description}
+      </div>
+    `;
+    sidebar.appendChild(routePanel);
+
+    this.routeSelect = routePanel.querySelector('#route-select') as HTMLSelectElement;
+    this.routeDescription = routePanel.querySelector('#route-description')!;
+
+    this.routeSelect.addEventListener('change', () => {
+      const preset = ROUTE_PRESETS[parseInt(this.routeSelect.value)];
+      if (preset) {
+        this.routeDescription.textContent = preset.description;
+        this.applyRoutePreset(preset);
+      }
+    });
 
     // Braking chart
     const chartContainer = document.createElement('div');
@@ -354,11 +385,21 @@ class Application {
       this.network = new TrackNetwork(nodes, edges, infra.stations);
       this.renderer.setNetwork(this.network);
 
-      // Generate default route and set up train
-      const route = this.network.generateDefaultRoute();
+      // Apply the selected route preset (or default to full line)
+      const presetIndex = this.routeSelect ? parseInt(this.routeSelect.value) : 0;
+      const preset = ROUTE_PRESETS[presetIndex] || ROUTE_PRESETS[0];
+      const route = this.network.generateRouteBetweenStations(
+        preset.fromStationId,
+        preset.toStationId
+      );
       this.currentRoute = route;
       const routeEdgeIds = route.map(r => r.edgeId);
       this.renderer.setRouteHighlight(routeEdgeIds);
+
+      if (this.routeSelect) {
+        this.routeSelect.value = String(presetIndex);
+        this.routeDescription.textContent = preset.description;
+      }
 
       this.trainDynamics = new TrainDynamics(this.trainParams, this.network, this.brakingModel);
       this.trainDynamics.setRoute(route);
@@ -381,6 +422,26 @@ class Application {
       console.error('Failed to parse railML:', msg, err);
       alert('Failed to parse railML file: ' + msg);
     }
+  }
+
+  private applyRoutePreset(preset: RoutePreset): void {
+    if (!this.network || !this.trainDynamics || !this.animController) return;
+
+    this.animController.stop();
+
+    const route = this.network.generateRouteBetweenStations(
+      preset.fromStationId,
+      preset.toStationId
+    );
+
+    this.currentRoute = route;
+    const routeEdgeIds = route.map(r => r.edgeId);
+    this.renderer.setRouteHighlight(routeEdgeIds);
+
+    this.trainDynamics.setRoute(route);
+    this.animController.renderFrame();
+    this.updateInfoPanel();
+    this.playBtn.innerHTML = '&#9654;';
   }
 
   private togglePlay(): void {

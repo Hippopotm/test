@@ -40,10 +40,10 @@ export class TrainRenderer {
     ctx.shadowColor = glowColor;
     ctx.shadowBlur = 12 / camera.zoom;
 
-    // Body
+    // Body — position point is the front of the train, body extends behind
     ctx.fillStyle = bodyColor;
     ctx.beginPath();
-    this.roundRect(ctx, -length / 2, -width / 2, length, width, cornerRadius);
+    this.roundRect(ctx, -length, -width / 2, length, width, cornerRadius);
     ctx.fill();
     ctx.shadowBlur = 0;
 
@@ -51,21 +51,21 @@ export class TrainRenderer {
     ctx.strokeStyle = withAlpha('#ffffff', 0.3);
     ctx.lineWidth = 0.8 / camera.zoom;
     ctx.beginPath();
-    this.roundRect(ctx, -length / 2, -width / 2, length, width, cornerRadius);
+    this.roundRect(ctx, -length, -width / 2, length, width, cornerRadius);
     ctx.stroke();
 
-    // Front indicator (direction)
+    // Front indicator (direction) — at front (x ≈ 0)
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(length / 2 - 3 / camera.zoom, 0, 1.5 / camera.zoom, 0, Math.PI * 2);
+    ctx.arc(-3 / camera.zoom, 0, 1.5 / camera.zoom, 0, Math.PI * 2);
     ctx.fill();
 
-    // Windows
+    // Windows — shifted to match new body position
     ctx.fillStyle = withAlpha('#87ceeb', 0.6);
     const windowW = 3 / camera.zoom;
     const windowH = 4 / camera.zoom;
     for (let i = 0; i < 4; i++) {
-      const wx = -length / 2 + 8 / camera.zoom + i * 7 / camera.zoom;
+      const wx = -length + 8 / camera.zoom + i * 7 / camera.zoom;
       ctx.fillRect(wx, -windowH / 2, windowW, windowH);
     }
 

@@ -11,6 +11,7 @@ export class TrackNetwork {
   readonly nodes: Map<string, TopoNode>;
   readonly edges: Map<string, TopoEdge>;
   readonly stations: StationInfo[];
+  private stationNodeMap: Map<string, string>;
 
   constructor(nodes: TopoNode[], edges: TopoEdge[], stations: RailMLStation[]) {
     this.nodes = new Map(nodes.map(n => [n.id, n]));
@@ -20,6 +21,28 @@ export class TrackNetwork {
       name: s.name,
       position: s.pos,
     }));
+    this.stationNodeMap = this.buildStationNodeMap();
+  }
+
+  private buildStationNodeMap(): Map<string, string> {
+    const map = new Map<string, string>();
+    for (const station of this.stations) {
+      let nearestNodeId = '';
+      let nearestDist = Infinity;
+      for (const node of this.nodes.values()) {
+        const dx = node.position.x - station.position.x;
+        const dy = node.position.y - station.position.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearestNodeId = node.id;
+        }
+      }
+      if (nearestNodeId) {
+        map.set(station.id, nearestNodeId);
+      }
+    }
+    return map;
   }
 
   getEdge(id: string): TopoEdge | undefined {
@@ -110,6 +133,20 @@ export class TrackNetwork {
     return null;
   }
 
+  generateRouteBetweenStations(fromStationId: string, toStationId: string): RouteSegment[] {
+    const fromNodeId = this.stationNodeMap.get(fromStationId);
+    const toNodeId = this.stationNodeMap.get(toStationId);
+    if (!fromNodeId || !toNodeId) {
+      console.warn(`Station node mapping not found for ${fromStationId} or ${toStationId}`);
+      return this.generateDefaultRoute();
+    }
+    const route = this.findPath(fromNodeId, toNodeId);
+    if (route.length > 0) return route;
+    const reverseRoute = this.findPath(toNodeId, fromNodeId);
+    if (reverseRoute.length > 0) return reverseRoute;
+    return this.generateDefaultRoute();
+  }
+
   generateDefaultRoute(): RouteSegment[] {
     // Find the longest path through the network using buffer-to-buffer
     const edgeList = Array.from(this.edges.values());
@@ -127,7 +164,7 @@ export class TrackNetwork {
     return this.buildSequentialRoute();
   }
 
-  private findPath(startNodeId: string, endNodeId: string): RouteSegment[] {
+  findPath(startNodeId: string, endNodeId: string): RouteSegment[] {
     const visited = new Set<string>();
     const queue: { nodeId: string; path: RouteSegment[] }[] = [
       { nodeId: startNodeId, path: [] },
